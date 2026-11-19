@@ -82,6 +82,18 @@ Model Error Comparison (Static Baseline vs. Adaptive Retraining):
   adaptive (page_hinkley)         0.2293       0.4490           0.2882           0.7778          1
 ```
 
+## Gating a pipeline with `--fail-on`
+
+By default the CLI always exits `0`, so a monitoring job cannot alert on drift.
+`--fail-on drift` exits `1` when the stream produced any drift event (and `0` on a
+clean, stationary stream), so the tool can gate or alert in a scheduled pipeline:
+
+```bash
+python main.py --detector both --fail-on drift
+```
+
+An unknown level is rejected by argparse rather than silently disabling the gate.
+
 ## Running Tests
 
 ```bash

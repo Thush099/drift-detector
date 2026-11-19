@@ -6,7 +6,7 @@ import argparse
 import logging
 
 from config import DriftDetectorConfig
-from src.pipeline import DriftDetectorPipeline
+from src.pipeline import DriftDetectorPipeline, PipelineResult
 from src.utils import generate_concept_drift_stream
 
 
@@ -51,7 +51,30 @@ def build_parser() -> argparse.ArgumentParser:
         default=defaults.seed,
         help="Random seed for stream generation and model initialization.",
     )
+    parser.add_argument(
+        "--fail-on",
+        choices=["none", "drift"],
+        default="none",
+        help=(
+            "Exit non-zero to gate a pipeline: 'drift' fails when the stream "
+            "produced any drift event. Default 'none' always exits 0."
+        ),
+    )
     return parser
+
+
+def exit_code_for(result: PipelineResult, fail_on: str) -> int:
+    """Map a pipeline result to a process exit code under the chosen gate.
+
+    Returns 0 when the gate is satisfied and 1 when the run should fail the
+    calling pipeline. ``fail_on`` must be one of ``none`` or ``drift``; unknown
+    values raise ``ValueError`` so a typo cannot silently disable gating.
+    """
+    if fail_on not in {"none", "drift"}:
+        raise ValueError(f"fail_on must be one of 'none', 'drift'; got {fail_on!r}")
+    if fail_on == "none":
+        return 0
+    return 1 if result.events else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -79,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     result = pipeline.run(X, y, drift_at=args.drift_at)
     print(result.format_summary())
-    return 0
+    return exit_code_for(result, args.fail_on)
 
 
 if __name__ == "__main__":

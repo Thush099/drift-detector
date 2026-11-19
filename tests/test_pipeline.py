@@ -161,3 +161,82 @@ class TestCLI:
         )
         assert "static_baseline" in proc.stdout
         assert "Detected Drift Events:" in proc.stdout
+
+
+class TestFailOnExitCode:
+    @staticmethod
+    def _result(events: list) -> "object":
+        from src.pipeline import PipelineResult
+
+        return PipelineResult(
+            detector_mode="both",
+            data_size=10,
+            warmup_size=5,
+            drift_at=None,
+            static_overall_mae=0.0,
+            static_overall_mse=0.0,
+            static_post_drift_mae=0.0,
+            static_post_drift_mse=0.0,
+            adaptive_overall_mae=0.0,
+            adaptive_overall_mse=0.0,
+            adaptive_post_drift_mae=0.0,
+            adaptive_post_drift_mse=0.0,
+            events=events,
+        )
+
+    def test_fail_on_none_always_succeeds(self) -> None:
+        from src.detectors import DriftEvent
+
+        event = DriftEvent(step=1, detector="adwin", pre_mean=0.0, post_mean=1.0, magnitude=1.0)
+        assert cli_main.exit_code_for(self._result([event]), "none") == 0
+
+    def test_fail_on_drift_gates_on_events(self) -> None:
+        from src.detectors import DriftEvent
+
+        event = DriftEvent(step=1, detector="adwin", pre_mean=0.0, post_mean=1.0, magnitude=1.0)
+        assert cli_main.exit_code_for(self._result([event]), "drift") == 1
+        assert cli_main.exit_code_for(self._result([]), "drift") == 0
+
+    def test_fail_on_rejects_unknown_level(self) -> None:
+        with pytest.raises(ValueError, match="fail_on must be one of"):
+            cli_main.exit_code_for(self._result([]), "bogus")
+
+    def test_cli_fail_on_drift_flags_injected_drift(self) -> None:
+        code = cli_main.main(
+            [
+                "--detector",
+                "both",
+                "--data-size",
+                "600",
+                "--drift-at",
+                "300",
+                "--shift-magnitude",
+                "3.0",
+                "--drift-type",
+                "abrupt",
+                "--seed",
+                "42",
+                "--fail-on",
+                "drift",
+            ]
+        )
+        assert code == 1
+
+    def test_cli_fail_on_drift_passes_on_stationary_stream(self) -> None:
+        code = cli_main.main(
+            [
+                "--detector",
+                "both",
+                "--data-size",
+                "600",
+                "--drift-at",
+                "0",
+                "--shift-magnitude",
+                "0.0",
+                "--seed",
+                "42",
+                "--fail-on",
+                "drift",
+            ]
+        )
+        assert code == 0

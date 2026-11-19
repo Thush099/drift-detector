@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Literal, Optional, Sequence
 
 import numpy as np
@@ -32,6 +33,10 @@ def generate_concept_drift_stream(
         raise ValueError(f"drift_type must be 'abrupt' or 'gradual', got {drift_type!r}")
     if n_features < 1:
         raise ValueError(f"n_features must be >= 1, got {n_features}")
+    if not math.isfinite(shift_magnitude):
+        raise ValueError(f"shift_magnitude must be finite, got {shift_magnitude!r}")
+    if not math.isfinite(noise_std) or noise_std < 0:
+        raise ValueError(f"noise_std must be finite and >= 0, got {noise_std!r}")
 
     rng = np.random.default_rng(seed)
     X = rng.normal(0.0, 1.0, size=(data_size, n_features))

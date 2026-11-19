@@ -240,3 +240,19 @@ class TestFailOnExitCode:
             ]
         )
         assert code == 0
+
+
+class TestStreamParameterValidation:
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_non_finite_shift_magnitude_fails_at_parameter_boundary(self, bad: float) -> None:
+        with pytest.raises(ValueError, match="shift_magnitude must be finite"):
+            generate_concept_drift_stream(data_size=100, drift_at=50, shift_magnitude=bad)
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), -0.5])
+    def test_invalid_noise_std_fails_at_parameter_boundary(self, bad: float) -> None:
+        with pytest.raises(ValueError, match="noise_std must be finite and >= 0"):
+            generate_concept_drift_stream(data_size=100, drift_at=50, noise_std=bad)
+
+    def test_cli_reports_shift_magnitude_not_stream_rows(self) -> None:
+        with pytest.raises(ValueError, match="shift_magnitude must be finite"):
+            cli_main.main(["--data-size", "100", "--drift-at", "50", "--shift-magnitude", "nan"])

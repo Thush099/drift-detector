@@ -54,6 +54,20 @@ class TestDriftDetectorPipeline:
         with pytest.raises(ValueError, match=expected_message):
             pipeline.run(X, y)
 
+    @pytest.mark.parametrize(
+        ("X", "message"),
+        [
+            (np.zeros((20, 2, 1)), "X must be a 1D or 2D array"),
+            (np.empty((20, 0)), "X must contain at least one feature"),
+            (np.array(1.0), "X must be a 1D or 2D array"),
+        ],
+    )
+    def test_invalid_feature_dimensions_fail_clearly(self, X: np.ndarray, message: str) -> None:
+        y = np.arange(20, dtype=np.float64)
+        pipeline = DriftDetectorPipeline(detector="adwin", warmup_size=10)
+        with pytest.raises(ValueError, match=re.escape(message)):
+            pipeline.run(X, y)
+
     def test_stationary_stream_no_false_detections(self) -> None:
         X, y = generate_concept_drift_stream(
             data_size=800,

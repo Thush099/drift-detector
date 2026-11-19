@@ -289,6 +289,10 @@ class DriftDetectorPipeline:
         X_arr = np.asarray(X, dtype=np.float64)
         if X_arr.ndim == 1:
             X_arr = X_arr.reshape(-1, 1)
+        elif X_arr.ndim != 2:
+            raise ValueError(f"X must be a 1D or 2D array, got shape {X_arr.shape}")
+        if X_arr.shape[1] == 0:
+            raise ValueError("X must contain at least one feature")
         y_arr = np.asarray(y, dtype=np.float64).ravel()
 
         non_finite_X = np.argwhere(~np.isfinite(X_arr))

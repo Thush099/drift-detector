@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from numbers import Integral
 from typing import Literal, Optional, Sequence
 
 import numpy as np
@@ -79,7 +80,13 @@ def generate_concept_drift_stream(
 
 def estimate_change_point(errors: Sequence[float], min_segment: int = 5) -> int:
     """Estimate the 1D 2-mean change-point index maximizing between-segment variance."""
+    if isinstance(min_segment, bool) or not isinstance(min_segment, Integral) or min_segment < 1:
+        raise ValueError(f"min_segment must be an integer >= 1, got {min_segment}")
     arr = np.asarray(errors, dtype=np.float64)
+    if arr.ndim != 1:
+        raise ValueError(f"errors must be 1-dimensional, got {arr.ndim} dims")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("errors must contain only finite values")
     n = len(arr)
     if n < 2 * min_segment:
         return 0

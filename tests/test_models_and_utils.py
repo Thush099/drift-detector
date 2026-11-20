@@ -61,6 +61,25 @@ class TestEstimateChangePoint:
         idx = estimate_change_point([1.0] * n, min_segment=5)
         assert 5 <= idx <= n - 5
 
+    @pytest.mark.parametrize("min_segment", [0, -5, True, 2.5])
+    def test_invalid_min_segment_rejected(self, min_segment: object) -> None:
+        # min_segment=0 used to divide by zero and silently report 0.
+        with pytest.raises(ValueError, match="min_segment must be an integer"):
+            estimate_change_point([0.0] * 10 + [10.0] * 10, min_segment=min_segment)  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+    def test_non_finite_errors_rejected(self, bad: float) -> None:
+        # A NaN/Inf residual used to corrupt the cumsum and localize the wrong cut.
+        errors = [0.0] * 10 + [10.0] * 10
+        errors[3] = bad
+        with pytest.raises(ValueError, match="errors must contain only finite"):
+            estimate_change_point(errors)
+
+    def test_min_segment_one_localizes_step_change(self) -> None:
+        # Regression: min_segment=0 previously returned 0 despite a clear change.
+        idx = estimate_change_point([0.0] * 10 + [10.0] * 10, min_segment=1)
+        assert 9 <= idx <= 11
+
 
 class TestOnlineRegressor:
     def test_predict_before_fit_raises(self) -> None:

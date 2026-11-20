@@ -24,7 +24,7 @@ When the conditional target relationship $P(y \mid X)$ changes over time (concep
 ### 3. `DriftDetectorPipeline`
 - Warm-up fits an `OnlineRegressor` (Ridge-initialized `SGDRegressor` with incremental `partial_fit` updates).
 - Monitors streaming absolute prediction errors $|y_t - \hat{y}_t|$ using ADWIN, Page-Hinkley, or both in parallel.
-- Records structured `DriftEvent(step, detector, pre_mean, post_mean, magnitude)` records, retrains cleanly on the isolated post-drift slice, and reports overall and post-drift MAE/MSE against a static baseline.
+- Records structured `DriftEvent(step, detector, pre_mean, post_mean, magnitude)` records, retrains cleanly on the isolated post-drift slice, and reports overall and post-drift MAE/MSE against a static baseline. The change-point estimator (`estimate_change_point`) validates its inputs, rejecting non-finite errors and an invalid `min_segment` rather than silently returning a misleading cut.
 
 ## Installation
 

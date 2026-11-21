@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import logging
+import math
 from typing import Any, Literal, Optional
 
 import numpy as np
@@ -146,6 +147,22 @@ class DriftDetectorPipeline:
             raise ValueError(f"detector must be 'adwin', 'page_hinkley', or 'both', got {detector!r}")
         if warmup_size < 10:
             raise ValueError(f"warmup_size must be >= 10, got {warmup_size}")
+        if not 0.0 < adwin_delta < 1.0:
+            raise ValueError("adwin_delta must be in (0, 1)")
+        if adwin_min_window < 2:
+            raise ValueError("adwin_min_window must be >= 2")
+        if ph_delta < 0.0 or not math.isfinite(ph_delta):
+            raise ValueError("ph_delta must be finite and non-negative")
+        if ph_threshold <= 0.0 or not math.isfinite(ph_threshold):
+            raise ValueError("ph_threshold must be finite and positive")
+        if not 0.0 < ph_alpha <= 1.0:
+            raise ValueError("ph_alpha must be in (0, 1]")
+        if ph_min_instances < 1:
+            raise ValueError("ph_min_instances must be >= 1")
+        if learning_rate <= 0.0 or not math.isfinite(learning_rate):
+            raise ValueError("learning_rate must be finite and positive")
+        if min_retrain_samples < 1:
+            raise ValueError("min_retrain_samples must be >= 1")
 
         self.detector_mode = detector
         self.warmup_size = int(warmup_size)
@@ -272,7 +289,21 @@ class DriftDetectorPipeline:
         X_arr = np.asarray(X, dtype=np.float64)
         if X_arr.ndim == 1:
             X_arr = X_arr.reshape(-1, 1)
+        elif X_arr.ndim != 2:
+            raise ValueError(f"X must be a 1D or 2D array, got shape {X_arr.shape}")
+        if X_arr.shape[1] == 0:
+            raise ValueError("X must contain at least one feature")
         y_arr = np.asarray(y, dtype=np.float64).ravel()
+
+        non_finite_X = np.argwhere(~np.isfinite(X_arr))
+        if non_finite_X.size:
+            row, column = (int(index) for index in non_finite_X[0])
+            raise ValueError(
+                f"X contains a non-finite value at row {row}, column {column}"
+            )
+        non_finite_y = np.flatnonzero(~np.isfinite(y_arr))
+        if non_finite_y.size:
+            raise ValueError(f"y contains a non-finite value at row {int(non_finite_y[0])}")
 
         if len(X_arr) != len(y_arr):
             raise ValueError(f"X and y length mismatch: {len(X_arr)} vs {len(y_arr)}")

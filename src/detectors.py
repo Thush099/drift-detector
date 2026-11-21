@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from collections import deque
 from dataclasses import asdict, dataclass
 import math
+from numbers import Integral
 from typing import Any, Literal, Optional
 
 import numpy as np
@@ -69,10 +70,10 @@ class ADWINDetector(BaseDriftDetector):
     name: str = "adwin"
 
     def __init__(self, delta: float = 0.002, min_window: int = 10) -> None:
-        if not 0.0 < delta < 1.0:
-            raise ValueError(f"delta must be in (0, 1), got {delta}")
-        if min_window < 2:
-            raise ValueError(f"min_window must be >= 2, got {min_window}")
+        if not math.isfinite(delta) or not 0.0 < delta < 1.0:
+            raise ValueError(f"delta must be finite and in (0, 1), got {delta}")
+        if isinstance(min_window, bool) or not isinstance(min_window, Integral) or min_window < 2:
+            raise ValueError(f"min_window must be an integer >= 2, got {min_window}")
         super().__init__()
         self.delta = float(delta)
         self.min_window = int(min_window)
@@ -185,14 +186,14 @@ class PageHinkleyDetector(BaseDriftDetector):
         min_instances: int = 30,
         mode: Literal["both", "up", "down"] = "both",
     ) -> None:
-        if delta < 0.0:
-            raise ValueError(f"delta must be >= 0, got {delta}")
-        if threshold <= 0.0:
-            raise ValueError(f"threshold must be > 0, got {threshold}")
-        if not 0.0 < alpha <= 1.0:
-            raise ValueError(f"alpha must be in (0, 1], got {alpha}")
-        if min_instances < 1:
-            raise ValueError(f"min_instances must be >= 1, got {min_instances}")
+        if not math.isfinite(delta) or delta < 0.0:
+            raise ValueError(f"delta must be finite and >= 0, got {delta}")
+        if not math.isfinite(threshold) or threshold <= 0.0:
+            raise ValueError(f"threshold must be finite and > 0, got {threshold}")
+        if not math.isfinite(alpha) or not 0.0 < alpha <= 1.0:
+            raise ValueError(f"alpha must be finite and in (0, 1], got {alpha}")
+        if isinstance(min_instances, bool) or not isinstance(min_instances, Integral) or min_instances < 1:
+            raise ValueError(f"min_instances must be an integer >= 1, got {min_instances}")
         if mode not in ("both", "up", "down"):
             raise ValueError(f"mode must be 'both', 'up', or 'down', got {mode!r}")
 

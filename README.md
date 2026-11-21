@@ -24,7 +24,7 @@ When the conditional target relationship $P(y \mid X)$ changes over time (concep
 ### 3. `DriftDetectorPipeline`
 - Warm-up fits an `OnlineRegressor` (Ridge-initialized `SGDRegressor` with incremental `partial_fit` updates).
 - Monitors streaming absolute prediction errors $|y_t - \hat{y}_t|$ using ADWIN, Page-Hinkley, or both in parallel.
-- Records structured `DriftEvent(step, detector, pre_mean, post_mean, magnitude)` records, retrains cleanly on the isolated post-drift slice, and reports overall and post-drift MAE/MSE against a static baseline.
+- Records structured `DriftEvent(step, detector, pre_mean, post_mean, magnitude)` records, retrains cleanly on the isolated post-drift slice, and reports overall and post-drift MAE/MSE against a static baseline. The change-point estimator (`estimate_change_point`) validates its inputs, rejecting non-finite errors and an invalid `min_segment` rather than silently returning a misleading cut.
 
 ## Installation
 
@@ -81,6 +81,18 @@ Model Error Comparison (Static Baseline vs. Adaptive Retraining):
   adaptive (adwin)                0.4053       1.5878           0.6050           2.8276          1
   adaptive (page_hinkley)         0.2293       0.4490           0.2882           0.7778          1
 ```
+
+## Gating a pipeline with `--fail-on`
+
+By default the CLI always exits `0`, so a monitoring job cannot alert on drift.
+`--fail-on drift` exits `1` when the stream produced any drift event (and `0` on a
+clean, stationary stream), so the tool can gate or alert in a scheduled pipeline:
+
+```bash
+python main.py --detector both --fail-on drift
+```
+
+An unknown level is rejected by argparse rather than silently disabling the gate.
 
 ## Running Tests
 

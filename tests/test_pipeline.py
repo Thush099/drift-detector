@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -15,6 +16,58 @@ from src.utils import generate_concept_drift_stream
 
 
 class TestDriftDetectorPipeline:
+    @pytest.mark.parametrize(
+        ("options", "message"),
+        [
+            ({"adwin_delta": 0.0}, "adwin_delta must be in (0, 1)"),
+            ({"adwin_min_window": 1}, "adwin_min_window must be >= 2"),
+            ({"ph_threshold": 0.0}, "ph_threshold must be finite and positive"),
+            ({"ph_alpha": 1.1}, "ph_alpha must be in (0, 1]"),
+            ({"min_retrain_samples": 0}, "min_retrain_samples must be >= 1"),
+            ({"learning_rate": -0.1}, "learning_rate must be finite and positive"),
+        ],
+    )
+    def test_invalid_detector_parameters_fail_fast(
+        self, options: dict[str, object], message: str
+    ) -> None:
+        with pytest.raises(ValueError, match=re.escape(message)):
+            DriftDetectorPipeline(**options)  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize(
+        ("bad_array", "expected_message"),
+        [
+            ("features", r"X contains a non-finite value at row 3, column 1"),
+            ("target", r"y contains a non-finite value at row 3"),
+        ],
+    )
+    def test_non_finite_stream_values_fail_with_location(
+        self, bad_array: str, expected_message: str
+    ) -> None:
+        X = np.arange(40, dtype=np.float64).reshape(20, 2)
+        y = np.arange(20, dtype=np.float64)
+        if bad_array == "features":
+            X[3, 1] = np.nan
+        else:
+            y[3] = np.inf
+
+        pipeline = DriftDetectorPipeline(detector="adwin", warmup_size=10)
+        with pytest.raises(ValueError, match=expected_message):
+            pipeline.run(X, y)
+
+    @pytest.mark.parametrize(
+        ("X", "message"),
+        [
+            (np.zeros((20, 2, 1)), "X must be a 1D or 2D array"),
+            (np.empty((20, 0)), "X must contain at least one feature"),
+            (np.array(1.0), "X must be a 1D or 2D array"),
+        ],
+    )
+    def test_invalid_feature_dimensions_fail_clearly(self, X: np.ndarray, message: str) -> None:
+        y = np.arange(20, dtype=np.float64)
+        pipeline = DriftDetectorPipeline(detector="adwin", warmup_size=10)
+        with pytest.raises(ValueError, match=re.escape(message)):
+            pipeline.run(X, y)
+
     def test_stationary_stream_no_false_detections(self) -> None:
         X, y = generate_concept_drift_stream(
             data_size=800,
@@ -122,3 +175,98 @@ class TestCLI:
         )
         assert "static_baseline" in proc.stdout
         assert "Detected Drift Events:" in proc.stdout
+
+
+class TestFailOnExitCode:
+    @staticmethod
+    def _result(events: list) -> "object":
+        from src.pipeline import PipelineResult
+
+        return PipelineResult(
+            detector_mode="both",
+            data_size=10,
+            warmup_size=5,
+            drift_at=None,
+            static_overall_mae=0.0,
+            static_overall_mse=0.0,
+            static_post_drift_mae=0.0,
+            static_post_drift_mse=0.0,
+            adaptive_overall_mae=0.0,
+            adaptive_overall_mse=0.0,
+            adaptive_post_drift_mae=0.0,
+            adaptive_post_drift_mse=0.0,
+            events=events,
+        )
+
+    def test_fail_on_none_always_succeeds(self) -> None:
+        from src.detectors import DriftEvent
+
+        event = DriftEvent(step=1, detector="adwin", pre_mean=0.0, post_mean=1.0, magnitude=1.0)
+        assert cli_main.exit_code_for(self._result([event]), "none") == 0
+
+    def test_fail_on_drift_gates_on_events(self) -> None:
+        from src.detectors import DriftEvent
+
+        event = DriftEvent(step=1, detector="adwin", pre_mean=0.0, post_mean=1.0, magnitude=1.0)
+        assert cli_main.exit_code_for(self._result([event]), "drift") == 1
+        assert cli_main.exit_code_for(self._result([]), "drift") == 0
+
+    def test_fail_on_rejects_unknown_level(self) -> None:
+        with pytest.raises(ValueError, match="fail_on must be one of"):
+            cli_main.exit_code_for(self._result([]), "bogus")
+
+    def test_cli_fail_on_drift_flags_injected_drift(self) -> None:
+        code = cli_main.main(
+            [
+                "--detector",
+                "both",
+                "--data-size",
+                "600",
+                "--drift-at",
+                "300",
+                "--shift-magnitude",
+                "3.0",
+                "--drift-type",
+                "abrupt",
+                "--seed",
+                "42",
+                "--fail-on",
+                "drift",
+            ]
+        )
+        assert code == 1
+
+    def test_cli_fail_on_drift_passes_on_stationary_stream(self) -> None:
+        code = cli_main.main(
+            [
+                "--detector",
+                "both",
+                "--data-size",
+                "600",
+                "--drift-at",
+                "0",
+                "--shift-magnitude",
+                "0.0",
+                "--seed",
+                "42",
+                "--fail-on",
+                "drift",
+            ]
+        )
+        assert code == 0
+
+
+class TestStreamParameterValidation:
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_non_finite_shift_magnitude_fails_at_parameter_boundary(self, bad: float) -> None:
+        with pytest.raises(ValueError, match="shift_magnitude must be finite"):
+            generate_concept_drift_stream(data_size=100, drift_at=50, shift_magnitude=bad)
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), -0.5])
+    def test_invalid_noise_std_fails_at_parameter_boundary(self, bad: float) -> None:
+        with pytest.raises(ValueError, match="noise_std must be finite and >= 0"):
+            generate_concept_drift_stream(data_size=100, drift_at=50, noise_std=bad)
+
+    def test_cli_reports_shift_magnitude_not_stream_rows(self) -> None:
+        with pytest.raises(ValueError, match="shift_magnitude must be finite"):
+            cli_main.main(["--data-size", "100", "--drift-at", "50", "--shift-magnitude", "nan"])

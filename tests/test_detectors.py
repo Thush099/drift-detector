@@ -64,6 +64,18 @@ class TestADWINDetector:
         assert detector.window_size == 0
         assert detector.mean == 0.0
 
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"delta": float("nan")},
+            {"delta": float("inf")},
+            {"min_window": 2.5},
+        ],
+    )
+    def test_invalid_parameters(self, kwargs: dict[str, float]) -> None:
+        with pytest.raises(ValueError):
+            ADWINDetector(**kwargs)  # type: ignore[arg-type]
+
     def test_invalid_inputs(self) -> None:
         with pytest.raises(ValueError):
             ADWINDetector(delta=1.5)
@@ -128,6 +140,21 @@ class TestPageHinkleyDetector:
         detector.reset()
         assert detector.statistic_up == 0.0
         assert detector.statistic_down == 0.0
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"delta": float("nan")},
+            {"threshold": float("inf")},
+            {"alpha": float("nan")},
+            {"min_instances": 2.5},
+        ],
+    )
+    def test_rejects_non_finite_and_non_integer_parameters(
+        self, kwargs: dict[str, float]
+    ) -> None:
+        with pytest.raises(ValueError):
+            PageHinkleyDetector(**kwargs)  # type: ignore[arg-type]
 
     def test_invalid_parameters(self) -> None:
         with pytest.raises(ValueError):

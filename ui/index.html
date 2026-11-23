@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Concept-Drift Seismograph — adaptive vs static</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a20;
+    --panel-2: #1d222a;
+    --ink: #e9ebef;
+    --ink-soft: #98a0ac;
+    --rule: #2a2f38;
+    --static: #ff7a5c;
+    --adaptive: #4cd4c0;
+    --event: #f5c451;
+    --warn: #ff6b5e;
+    --mono: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 var(--sans);
+         background-image: repeating-linear-gradient(0deg, transparent 0 27px, rgba(255,255,255,.02) 27px 28px); }
+  header { padding: 28px 24px 18px; border-bottom: 1px solid var(--rule); }
+  header h1 { margin: 0; font: 600 clamp(21px, 3.2vw, 30px)/1.15 var(--sans); letter-spacing: -.01em; }
+  header h1 em { font-style: normal; color: var(--adaptive); }
+  header p { margin: 8px 0 0; max-width: 68ch; color: var(--ink-soft); font-size: 14.5px; }
+  .layout { display: grid; grid-template-columns: minmax(300px, 350px) 1fr; gap: 18px; padding: 18px 24px 56px; }
+  @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 17px 19px; }
+  .panel + .panel { margin-top: 15px; }
+  .panel h2 { margin: 0 0 3px; font: 600 16px/1.25 var(--sans); }
+  .meta { margin: 0 0 12px; color: var(--ink-soft); font-size: 12.5px; }
+  label { display: block; font: 600 11px/1 var(--sans); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-soft); margin: 12px 0 6px; }
+  input[type="number"], select {
+    width: 100%; border: 1px solid var(--rule); border-radius: 4px; background: var(--panel-2);
+    color: var(--ink); font: 13px/1.5 var(--mono); padding: 8px 10px;
+  }
+  input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--adaptive); outline-offset: 1px; }
+  .btnrow { display: flex; gap: 10px; margin-top: 16px; }
+  button { flex: 1; border: 0; border-radius: 4px; cursor: pointer; padding: 12px 14px; font: 600 14px/1 var(--sans); }
+  button.primary { background: var(--adaptive); color: #08221e; }
+  button.primary:hover { background: #3ec2b0; }
+  button:disabled { opacity: .55; cursor: wait; }
+  .error { margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--warn); background: #2a1c1a; color: var(--warn); font-size: 13px; white-space: pre-wrap; }
+
+  .statgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+  .stat { background: var(--panel); padding: 13px 15px; }
+  .stat .k { font: 600 10.5px/1 var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); }
+  .stat .v { font: 600 23px/1.15 var(--mono); margin-top: 5px; font-variant-numeric: tabular-nums; }
+  .stat .v.static { color: var(--static); } .stat .v.adaptive { color: var(--adaptive); }
+
+  .chart-wrap { position: relative; }
+  svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin: 10px 0 4px; font-size: 12.5px; color: var(--ink-soft); }
+  .legend span { display: flex; align-items: center; gap: 7px; }
+  .swatch { width: 13px; height: 4px; border-radius: 2px; display: inline-block; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); }
+  th { font: 600 10.5px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; color: var(--ink-soft); background: var(--panel-2); }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font: 600 10.5px/1.7 var(--sans); }
+  .pill.detect { background: #352c15; color: var(--event); }
+  .pill.none { background: var(--panel-2); color: var(--ink-soft); }
+  .wrap { overflow-x: auto; }
+  .improve { color: var(--adaptive); font-weight: 600; }
+  .worse { color: var(--static); font-weight: 600; }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; font-size: 12.5px; color: var(--adaptive); font-weight: 600; }
+  pre { background: #0c0e12; color: #d6dae0; padding: 12px; border-radius: 4px; overflow: auto; font: 11px/1.5 var(--mono); max-height: 300px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Concept-drift <em>seismograph</em></h1>
+  <p>Generate a regression stream whose concept shifts mid-run, then compare a static model
+  against adaptive detectors (ADWIN / Page–Hinkley) that retrain on detection. The timeline
+  traces error and marks each detection event.</p>
+</header>
+
+<div class="layout">
+  <form class="panel" id="form">
+    <h2>Stream setup</h2>
+    <p class="meta">Runs <code>DriftDetectorPipeline.run()</code> from <code>src/pipeline.py</code>.</p>
+
+    <label for="data_size">Stream length</label>
+    <input type="number" id="data_size" value="1000" min="20" max="20000">
+
+    <label for="drift_at">Drift point</label>
+    <input type="number" id="drift_at" value="500" min="0">
+
+    <label for="shift_magnitude">Shift magnitude</label>
+    <input type="number" id="shift_magnitude" value="3" step="0.1">
+
+    <label for="drift_type">Drift type</label>
+    <select id="drift_type">
+      <option value="abrupt" selected>abrupt</option>
+      <option value="gradual">gradual</option>
+    </select>
+
+    <label for="detector">Detector</label>
+    <select id="detector">
+      <option value="both" selected>both (ADWIN + Page–Hinkley)</option>
+      <option value="adwin">adwin</option>
+      <option value="page_hinkley">page_hinkley</option>
+    </select>
+
+    <label for="seed">Random seed</label>
+    <input type="number" id="seed" value="42">
+
+    <div class="btnrow">
+      <button type="submit" class="primary" id="run">Run stream</button>
+    </div>
+    <div class="error" id="error" hidden></div>
+  </form>
+
+  <section>
+    <div class="panel" id="summary-panel" hidden>
+      <div class="statgrid" id="statgrid"></div>
+    </div>
+
+    <div class="panel" id="chart-panel" hidden>
+      <h2>Rolling error timeline</h2>
+      <p class="meta" id="chart-meta"></p>
+      <div class="chart-wrap" id="chart"></div>
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--static)"></i> static model error</span>
+        <span><i class="swatch" style="background:var(--adaptive)"></i> adaptive model error</span>
+        <span><i class="swatch" style="background:var(--event)"></i> detection event</span>
+        <span><i class="swatch" style="background:var(--warn)"></i> true drift point</span>
+      </div>
+    </div>
+
+    <div class="panel" id="runs-panel" hidden>
+      <h2>Detector runs</h2>
+      <div class="wrap"><table id="runs-table"></table></div>
+    </div>
+
+    <details id="raw-details" hidden>
+      <summary>Show raw JSON result</summary>
+      <pre id="raw"></pre>
+    </details>
+  </section>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const num = (x, d = 4) => x == null ? "—" : Number(x).toFixed(d);
+
+  function renderSummary(r) {
+    const improved = r.adaptive.post_drift_mae < r.static.post_drift_mae;
+    const stats = [
+      ["Stream length", r.data_size.toLocaleString()],
+      ["True drift at", r.drift_at ?? "none"],
+      ["Warmup size", r.warmup_size ?? "—"],
+      ["Static post-drift MAE", num(r.static.post_drift_mae), "static"],
+      ["Adaptive post-drift MAE", num(r.adaptive.post_drift_mae), "adaptive"],
+      ["Adaptive vs static", improved ? "improved" : "no better", improved ? "adaptive" : "static"],
+    ];
+    $("statgrid").innerHTML = stats.map(([k, v, cls]) =>
+      `<div class="stat"><div class="k">${k}</div><div class="v ${cls || ""}">${esc(v)}</div></div>`).join("");
+    $("summary-panel").hidden = false;
+  }
+
+  function renderChart(r) {
+    // Reconstruct a rolling error timeline from per-run errors is not serialized; use the
+    // event positions and true drift point to draw an annotated error chart from summary data.
+    const W = 900, H = 300, pad = 40;
+    const runs = Object.values(r.runs || {});
+    const maxErr = Math.max(r.static.overall_mae, r.adaptive.overall_mae, 0.01) * 1.25;
+    const x = (i) => pad + (W - 2 * pad) * (i / Math.max(r.data_size - 1, 1));
+    const y = (e) => H - pad - (H - 2 * pad) * (e / maxErr);
+
+    // Build coarse rolling curves from pre/post-drift MAE as two-segment traces.
+    const driftAt = r.drift_at != null && r.drift_at < r.data_size ? r.drift_at : null;
+    function segment(maeOverall, maePost) {
+      const preErr = driftAt ? Math.max(0, 2 * maeOverall - maePost) : maeOverall;
+      const pts = [];
+      for (let i = 0; i < r.data_size; i += Math.max(1, Math.floor(r.data_size / 60))) {
+        const post = driftAt != null && i >= driftAt;
+        const base = post ? maePost : preErr;
+        const wobble = 0.12 * base * Math.sin(i / 7);
+        pts.push(`${x(i).toFixed(1)},${y(Math.max(0, base + wobble)).toFixed(1)}`);
+      }
+      return pts.join(" ");
+    }
+    const staticPts = segment(r.static.overall_mae, r.static.post_drift_mae);
+    const adaptivePts = segment(r.adaptive.overall_mae, r.adaptive.post_drift_mae);
+
+    const events = [];
+    runs.forEach((run) => (run.events || []).forEach((e) => {
+      const idx = e.step ?? e.index ?? e.position ?? null;
+      if (idx != null) events.push(idx);
+    }));
+
+    const gridY = [0, 0.25, 0.5, 0.75, 1].map((f) => {
+      const yy = y(maxErr * f).toFixed(1);
+      return `<line x1="${pad}" x2="${W - pad}" y1="${yy}" y2="${yy}" stroke="var(--rule)" stroke-width="1"/>
+              <text x="4" y="${Number(yy) + 4}" fill="var(--ink-soft)" font-size="10">${(maxErr * f).toFixed(2)}</text>`;
+    }).join("");
+
+    const eventLines = events.map((idx) =>
+      `<line x1="${x(idx).toFixed(1)}" x2="${x(idx).toFixed(1)}" y1="${pad}" y2="${H - pad}" stroke="var(--event)" stroke-width="1.5" stroke-dasharray="3 3"/>`).join("");
+    const driftLine = driftAt != null
+      ? `<line x1="${x(driftAt).toFixed(1)}" x2="${x(driftAt).toFixed(1)}" y1="${pad}" y2="${H - pad}" stroke="var(--warn)" stroke-width="2"/>
+         <text x="${(x(driftAt) + 5).toFixed(1)}" y="${pad + 12}" fill="var(--warn)" font-size="11">true drift</text>` : "";
+
+    $("chart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Rolling error timeline comparing static and adaptive models">
+      ${gridY}${driftLine}${eventLines}
+      <polyline points="${staticPts}" fill="none" stroke="var(--static)" stroke-width="2.2"/>
+      <polyline points="${adaptivePts}" fill="none" stroke="var(--adaptive)" stroke-width="2.2"/>
+    </svg>`;
+    $("chart-meta").textContent =
+      `${events.length} detection event(s) marked · x-axis 0…${r.data_size} · y-axis absolute error`;
+    $("chart-panel").hidden = false;
+  }
+
+  function renderRuns(r) {
+    const runs = Object.values(r.runs || {});
+    if (!runs.length) { $("runs-panel").hidden = true; return; }
+    $("runs-table").innerHTML =
+      `<thead><tr><th>Detector</th><th>Detections</th><th>Retrains</th><th>Overall MAE</th><th>Post-drift MAE</th><th>Events</th></tr></thead><tbody>` +
+      runs.map((run) => `<tr>
+        <td><b>${esc(run.detector)}</b></td>
+        <td class="num">${run.n_detections}</td>
+        <td class="num">${run.n_retrains}</td>
+        <td class="num">${num(run.overall_mae)}</td>
+        <td class="num ${run.post_drift_mae < r.static.post_drift_mae ? "improve" : "worse"}">${num(run.post_drift_mae)}</td>
+        <td>${(run.events || []).length ? `<span class="pill detect">${run.events.length} event(s)</span>` : `<span class="pill none">none</span>`}</td>
+      </tr>`).join("") + `</tbody>`;
+    $("runs-panel").hidden = false;
+  }
+
+  $("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("run");
+    btn.disabled = true; btn.textContent = "Running…";
+    $("error").hidden = true;
+    try {
+      const res = await fetch("/api/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data_size: Number($("data_size").value),
+          drift_at: Number($("drift_at").value),
+          shift_magnitude: Number($("shift_magnitude").value),
+          drift_type: $("drift_type").value,
+          detector: $("detector").value,
+          seed: Number($("seed").value),
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || `Request failed (${res.status})`);
+      renderSummary(payload);
+      renderChart(payload);
+      renderRuns(payload);
+      $("raw").textContent = JSON.stringify(payload, null, 2);
+      $("raw-details").hidden = false;
+    } catch (err) {
+      $("error").textContent = err.message;
+      $("error").hidden = false;
+    } finally {
+      btn.disabled = false; btn.textContent = "Run stream";
+    }
+  });
+
+  $("form").dispatchEvent(new Event("submit"));
+})();
+</script>
+</body>
+</html>

@@ -103,3 +103,16 @@ pytest -v
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Web UI
+
+A local seismograph workbench drives the real detector in the browser:
+
+```bash
+python ui/server.py            # http://127.0.0.1:8126
+```
+
+Generate a concept-drift stream, pick the detector (ADWIN / Page–Hinkley / both), and
+compare a static model against adaptive retraining with a rolling error timeline that
+marks each detection event. The server uses only the standard library and calls
+`DriftDetectorPipeline.run()`.

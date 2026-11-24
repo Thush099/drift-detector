@@ -70,9 +70,19 @@
   details { margin-top: 8px; }
   summary { cursor: pointer; font-size: 12.5px; color: var(--adaptive); font-weight: 600; }
   pre { background: #0c0e12; color: #d6dae0; padding: 12px; border-radius: 4px; overflow: auto; font: 11px/1.5 var(--mono); max-height: 300px; }
+  .skip-link {
+    position: absolute; left: -9999px; top: 0; z-index: 100;
+    background: var(--accent, #2b6cb0); color: #fff; padding: 10px 16px;
+    border-radius: 0 0 6px 0; font: 600 13px/1 var(--sans); text-decoration: none;
+  }
+  .skip-link:focus { left: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; animation: none !important; }
+  }
 </style>
 </head>
 <body>
+<a class="skip-link" href="#form">Skip to controls</a>
 <header>
   <h1>Concept-drift <em>seismograph</em></h1>
   <p>Generate a regression stream whose concept shifts mid-run, then compare a static model
@@ -80,7 +90,7 @@
   traces error and marks each detection event.</p>
 </header>
 
-<div class="layout">
+<main class="layout">
   <form class="panel" id="form">
     <h2>Stream setup</h2>
     <p class="meta">Runs <code>DriftDetectorPipeline.run()</code> from <code>src/pipeline.py</code>.</p>
@@ -113,7 +123,7 @@
     <div class="btnrow">
       <button type="submit" class="primary" id="run">Run stream</button>
     </div>
-    <div class="error" id="error" hidden></div>
+    <div class="error" id="error" role="alert" hidden></div>
   </form>
 
   <section>
@@ -143,7 +153,7 @@
       <pre id="raw"></pre>
     </details>
   </section>
-</div>
+</main>
 
 <script>
 (() => {

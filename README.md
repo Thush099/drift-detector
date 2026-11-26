@@ -1,5 +1,7 @@
 # Drift Detector
 
+[![CI](https://github.com/Thush099/drift-detector/actions/workflows/tests.yml/badge.svg)](https://github.com/Thush099/drift-detector/actions/workflows/tests.yml)
+
 Streaming concept drift detection and online model adaptation using **ADWIN** (Adaptive Windowing) and **Page-Hinkley** cumulative-deviation tests.
 
 ## Problem Statement
